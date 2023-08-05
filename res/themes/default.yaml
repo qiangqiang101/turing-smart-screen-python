@@ -1,0 +1,130 @@
+# This file is used to add mandatory sections to a theme file in case they are missing
+# This is not a theme! Do not use this file to create a new theme, as a lot of content is missing: use theme_example.yaml
+STATS:
+  CPU:
+    PERCENTAGE:
+      INTERVAL: 1
+      TEXT:
+        SHOW: False
+      GRAPH:
+        SHOW: False
+      RADIAL:
+        SHOW: False
+    FREQUENCY:
+      INTERVAL: 5
+      TEXT:
+        SHOW: False
+    LOAD:
+      INTERVAL: 5
+      ONE:
+        TEXT:
+          SHOW: False
+      FIVE:
+        TEXT:
+          SHOW: False
+      FIFTEEN:
+        TEXT:
+          SHOW: False
+    TEMPERATURE:
+      INTERVAL: 5
+      TEXT:
+        SHOW: False
+  GPU:
+    INTERVAL: 1
+    PERCENTAGE:
+      GRAPH:
+        SHOW: False
+      RADIAL:
+        SHOW: False
+      TEXT:
+        SHOW: False
+    MEMORY:
+      GRAPH:
+        SHOW: False
+      RADIAL:
+        SHOW: False
+      TEXT:
+        SHOW: False
+        SHOW_UNIT: False
+    TEMPERATURE:
+      TEXT:
+        SHOW: False
+        SHOW_UNIT: False
+  MEMORY:
+    INTERVAL: 5
+    SWAP:
+      GRAPH:
+        SHOW: False
+      RADIAL:
+        SHOW: False
+    VIRTUAL:
+      GRAPH:
+        SHOW: False
+      RADIAL:
+        SHOW: False
+      USED:
+        SHOW: False
+        SHOW_UNIT: False
+      FREE:
+        SHOW: False
+        SHOW_UNIT: False
+      PERCENT_TEXT:
+        SHOW: False
+        SHOW_UNIT: False
+  DISK:
+    INTERVAL: 10
+    USED:
+      GRAPH:
+        SHOW: False
+      RADIAL:
+        SHOW: False
+      TEXT:
+        SHOW: False
+        SHOW_UNIT: False
+      PERCENT_TEXT:
+        SHOW: False
+        SHOW_UNIT: False
+    TOTAL:
+      TEXT:
+        SHOW: False
+        SHOW_UNIT: False
+    FREE:
+      TEXT:
+        SHOW: False
+        SHOW_UNIT: False
+  NET:
+    INTERVAL: 1
+    WLO:
+      UPLOAD:
+        TEXT:
+          SHOW: False
+      UPLOADED:
+        TEXT:
+          SHOW: False
+      DOWNLOAD:
+        TEXT:
+          SHOW: False
+      DOWNLOADED:
+        TEXT:
+          SHOW: False
+    ETH:
+      UPLOAD:
+        TEXT:
+          SHOW: False
+      UPLOADED:
+        TEXT:
+          SHOW: False
+      DOWNLOAD:
+        TEXT:
+          SHOW: False
+      DOWNLOADED:
+        TEXT:
+          SHOW: False
+  DATE:
+    INTERVAL: 1
+    DAY:
+      TEXT:
+        SHOW: False
+    HOUR:
+      TEXT:
+        SHOW: False

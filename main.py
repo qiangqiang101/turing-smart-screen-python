@@ -1,242 +1,258 @@
-#!/usr/bin/env python3
-# A simple Python manager for "Turing Smart Screen" 3.5" IPS USB-C display
-# https://github.com/mathoudebine/turing-smart-screen-python
+#!/usr/bin/env python
+# turing-smart-screen-python - a Python system monitor and library for USB-C displays like Turing Smart Screen or XuanFang
+# https://github.com/mathoudebine/turing-smart-screen-python/
 
+# Copyright (C) 2021-2023  Matthieu Houdebine (mathoudebine)
+# Copyright (C) 2022-2023  Rollbacke
+# Copyright (C) 2022-2023  Ebag333
+# Copyright (C) 2022-2023  w1ld3r
+# Copyright (C) 2022-2023  Charles Ferguson (gerph)
+# Copyright (C) 2022-2023  Russ Nelson (RussNelson)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+# This file is the system monitor main program to display HW sensors on your screen using themes (see README)
 import os
-import signal
-import struct
-from datetime import datetime
-from time import sleep
+import sys
 
-import serial  # Install pyserial : pip install pyserial
-from PIL import Image, ImageDraw, ImageFont  # Install PIL or Pillow
+MIN_PYTHON = (3, 8)
+if sys.version_info < MIN_PYTHON:
+    print("[ERROR] Python %s.%s or later is required." % MIN_PYTHON)
+    try:
+        sys.exit(0)
+    except:
+        os._exit(0)
 
-# Set your COM port e.g. COM3 for Windows, /dev/ttyACM0 for Linux...
-COM_PORT = "/dev/ttyACM0"
-# COM_PORT = "COM5"
+try:
+    import atexit
+    import locale
+    import platform
+    import signal
+    import subprocess
+    import time
+    from PIL import Image
 
-DISPLAY_WIDTH = 320
-DISPLAY_HEIGHT = 480
+    if platform.system() == 'Windows':
+        import win32api
+        import win32con
+        import win32gui
 
+    try:
+        import pystray
+    except:
+        pass
+except:
+    print(
+        "[ERROR] Python dependencies not installed. Please follow start guide: https://github.com/mathoudebine/turing-smart-screen-python/wiki/System-monitor-:-how-to-start")
+    try:
+        sys.exit(0)
+    except:
+        os._exit(0)
 
-class Command:
-    RESET = 101
-    CLEAR = 102
-    SCREEN_OFF = 108
-    SCREEN_ON = 109
-    SET_BRIGHTNESS = 110
-    DISPLAY_BITMAP = 197
-
-
-def SendReg(ser: serial.Serial, cmd: int, x: int, y: int, ex: int, ey: int):
-    byteBuffer = bytearray(6)
-    byteBuffer[0] = (x >> 2)
-    byteBuffer[1] = (((x & 3) << 6) + (y >> 4))
-    byteBuffer[2] = (((y & 15) << 4) + (ex >> 6))
-    byteBuffer[3] = (((ex & 63) << 2) + (ey >> 8))
-    byteBuffer[4] = (ey & 255)
-    byteBuffer[5] = cmd
-    ser.write(bytes(byteBuffer))
-
-
-def Reset(ser: serial.Serial):
-    SendReg(ser, Command.RESET, 0, 0, 0, 0)
-
-
-def Clear(ser: serial.Serial):
-    SendReg(ser, Command.CLEAR, 0, 0, 0, 0)
-
-
-def ScreenOff(ser: serial.Serial):
-    SendReg(ser, Command.SCREEN_OFF, 0, 0, 0, 0)
-
-
-def ScreenOn(ser: serial.Serial):
-    SendReg(ser, Command.SCREEN_ON, 0, 0, 0, 0)
-
-
-def SetBrightness(ser: serial.Serial, level: int):
-    # Level : 0 (brightest) - 255 (darkest)
-    assert 255 >= level >= 0, 'Brightness level must be [0-255]'
-    SendReg(ser, Command.SET_BRIGHTNESS, level, 0, 0, 0)
-
-
-def DisplayPILImage(ser: serial.Serial, image: Image, x: int, y: int):
-    image_height = image.size[1]
-    image_width = image.size[0]
-
-    assert image_height > 0, 'Image width must be > 0'
-    assert image_width > 0, 'Image height must be > 0'
-
-    SendReg(ser, Command.DISPLAY_BITMAP, x, y, x + image_width - 1, y + image_height - 1)
-
-    pix = image.load()
-    line = bytes()
-    for h in range(image_height):
-        for w in range(image_width):
-            R = pix[w, h][0] >> 3
-            G = pix[w, h][1] >> 2
-            B = pix[w, h][2] >> 3
-
-            rgb = (R << 11) | (G << 5) | B
-            line += struct.pack('H', rgb)
-
-            # Send image data by multiple of DISPLAY_WIDTH bytes
-            if len(line) >= DISPLAY_WIDTH * 8:
-                ser.write(line)
-                line = bytes()
-
-    # Write last line if needed
-    if len(line) > 0:
-        ser.write(line)
-
-    sleep(0.01)  # Wait 10 ms after picture display
-
-
-def DisplayBitmap(ser: serial.Serial, bitmap_path: str, x=0, y=0):
-    image = Image.open(bitmap_path)
-    DisplayPILImage(ser, image, x, y)
-
-
-def DisplayText(ser: serial.Serial, text: str, x=0, y=0,
-                font="roboto/Roboto-Regular.ttf",
-                font_size=20,
-                font_color=(0, 0, 0),
-                background_color=(255, 255, 255),
-                background_image: str = None):
-    # Convert text to bitmap using PIL and display it
-    # Provide the background image path to display text with transparent background
-
-    assert len(text) > 0, 'Text must not be empty'
-    assert font_size > 0, "Font size must be > 0"
-
-    if background_image is None:
-        # A text bitmap is created with max width/height by default : text with solid background
-        text_image = Image.new('RGB', (DISPLAY_WIDTH, DISPLAY_HEIGHT), background_color)
-    else:
-        # The text bitmap is created from provided background image : text with transparent background
-        text_image = Image.open(background_image)
-
-    # Draw text with specified color & font
-    font = ImageFont.truetype("./res/fonts/" + font, font_size)
-    d = ImageDraw.Draw(text_image)
-    d.text((x, y), text, font=font, fill=font_color)
-
-    # Crop text bitmap to keep only the text
-    text_width, text_height = d.textsize(text, font=font)
-    text_image = text_image.crop(box=(x, y, min(x + text_width, DISPLAY_WIDTH), min(y + text_height, DISPLAY_HEIGHT)))
-
-    DisplayPILImage(ser, text_image, x, y)
-
-
-def DisplayProgressBar(ser: serial.Serial, x: int, y: int, width: int, height: int, min_value=0, max_value=100,
-                       value=50,
-                       bar_color=(0, 0, 0),
-                       bar_outline=True,
-                       background_color=(255, 255, 255),
-                       background_image: str = None):
-    # Generate a progress bar and display it
-    # Provide the background image path to display progress bar with transparent background
-
-    assert x + width <= DISPLAY_WIDTH, 'Progress bar width exceeds display width'
-    assert y + height <= DISPLAY_HEIGHT, 'Progress bar height exceeds display height'
-    assert min_value <= value <= max_value, 'Progress bar value shall be between min and max'
-
-    if background_image is None:
-        # A bitmap is created with solid background
-        bar_image = Image.new('RGB', (width, height), background_color)
-    else:
-        # A bitmap is created from provided background image
-        bar_image = Image.open(background_image)
-
-        # Crop bitmap to keep only the progress bar background
-        bar_image = bar_image.crop(box=(x, y, x + width, y + height))
-
-    # Draw progress bar
-    bar_filled_width = value / (max_value - min_value) * width
-    draw = ImageDraw.Draw(bar_image)
-    draw.rectangle([0, 0, bar_filled_width-1, height-1], fill=bar_color, outline=bar_color)
-
-    if bar_outline:
-        # Draw outline
-        draw.rectangle([0, 0, width-1, height-1], fill=None, outline=bar_color)
-
-    DisplayPILImage(ser, bar_image, x, y)
-
-
-stop = False
+from library.log import logger
+import library.scheduler as scheduler
+from library.display import display
 
 if __name__ == "__main__":
 
-    def sighandler(signum, frame):
-        global stop
-        stop = True
+    # Apply system locale to this program
+    locale.setlocale(locale.LC_ALL, '')
+
+    logger.debug("Using Python %s" % sys.version)
 
 
-    # Set the signal handlers, to send a complete frame to the LCD before exit
-    signal.signal(signal.SIGINT, sighandler)
-    signal.signal(signal.SIGTERM, sighandler)
+    def clean_stop(tray_icon=None):
+        # Turn screen and LEDs off before stopping
+        display.turn_off()
+
+        # Do not stop the program now in case data transmission was in progress
+        # Instead, ask the scheduler to empty the action queue before stopping
+        scheduler.STOPPING = True
+
+        # Allow 5 seconds max. delay in case scheduler is not responding
+        wait_time = 5
+        logger.info("Waiting for all pending request to be sent to display (%ds max)..." % wait_time)
+
+        while not scheduler.is_queue_empty() and wait_time > 0:
+            time.sleep(0.1)
+            wait_time = wait_time - 0.1
+
+        logger.debug("(%.1fs)" % (5 - wait_time))
+
+        # Remove tray icon just before exit
+        if tray_icon:
+            tray_icon.visible = False
+
+        # We force the exit to avoid waiting for other scheduled tasks: they may have a long delay!
+        try:
+            sys.exit(0)
+        except:
+            os._exit(0)
+
+
+    def on_signal_caught(signum, frame=None):
+        logger.info("Caught signal %d, exiting" % signum)
+        clean_stop()
+
+
+    def on_configure_tray(tray_icon, item):
+        logger.info("Configure from tray icon")
+        subprocess.Popen(os.path.join(os.getcwd(), "configure.py"), shell=True)
+        clean_stop(tray_icon)
+
+
+    def on_exit_tray(tray_icon, item):
+        logger.info("Exit from tray icon")
+        clean_stop(tray_icon)
+
+
+    def on_clean_exit(*args):
+        logger.info("Program will now exit")
+        clean_stop()
+
+
+    if platform.system() == "Windows":
+        def on_win32_ctrl_event(event):
+            """Handle Windows console control events (like Ctrl-C)."""
+            if event in (win32con.CTRL_C_EVENT, win32con.CTRL_BREAK_EVENT, win32con.CTRL_CLOSE_EVENT):
+                logger.debug("Caught Windows control event %s, exiting" % event)
+                clean_stop()
+            return 0
+
+
+        def on_win32_wm_event(hWnd, msg, wParam, lParam):
+            """Handle Windows window message events (like ENDSESSION, CLOSE, DESTROY)."""
+            logger.debug("Caught Windows window message event %s" % msg)
+            if msg == win32con.WM_POWERBROADCAST:
+                # WM_POWERBROADCAST is used to detect computer going to/resuming from sleep
+                if wParam == win32con.PBT_APMSUSPEND:
+                    logger.info("Computer is going to sleep, display will turn off")
+                    display.turn_off()
+                elif wParam == win32con.PBT_APMRESUMEAUTOMATIC:
+                    logger.info("Computer is resuming from sleep, display will turn on")
+                    display.turn_on()
+            else:
+                # For any other events, the program will stop
+                logger.info("Program will now exit")
+                clean_stop()
+
+    # Create a tray icon for the program, with an Exit entry in menu
+    try:
+        tray_icon = pystray.Icon(
+            name='Turing System Monitor',
+            title='Turing System Monitor',
+            icon=Image.open("res/icons/monitor-icon-17865/64.png"),
+            menu=pystray.Menu(
+                pystray.MenuItem(
+                    text='Configure',
+                    action=on_configure_tray),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem(
+                    text='Exit',
+                    action=on_exit_tray)
+            )
+        )
+
+        # For platforms != macOS, display the tray icon now with non-blocking function
+        if platform.system() != "Darwin":
+            tray_icon.run_detached()
+            logger.info("Tray icon has been displayed")
+    except:
+        tray_icon = None
+        logger.warning("Tray icon is not supported on your platform")
+
+    # Set the different stopping event handlers, to send a complete frame to the LCD before exit
+    atexit.register(on_clean_exit)
+    signal.signal(signal.SIGINT, on_signal_caught)
+    signal.signal(signal.SIGTERM, on_signal_caught)
     is_posix = os.name == 'posix'
     if is_posix:
-        signal.signal(signal.SIGQUIT, sighandler)
+        signal.signal(signal.SIGQUIT, on_signal_caught)
+    if platform.system() == "Windows":
+        win32api.SetConsoleCtrlHandler(on_win32_ctrl_event, True)
 
-    # Do not change COM port settings unless you know what you are doing
-    lcd_comm = serial.Serial(COM_PORT, 115200, timeout=1, rtscts=1)
+    # Initialize the display
+    display.initialize_display()
 
-    # Clear screen (blank)
-    Clear(lcd_comm)
+    # Create all static images
+    display.display_static_images()
 
-    # Set brightness to max value
-    SetBrightness(lcd_comm, 0)
+    # Create all static texts
+    display.display_static_text()
 
-    # Display sample picture
-    DisplayBitmap(lcd_comm, "res/example.png")
+    # Run our jobs that update data
+    import library.stats as stats
 
-    # Display sample text
-    DisplayText(lcd_comm, "Basic text", 50, 100)
+    scheduler.CPUPercentage()
+    scheduler.CPUFrequency()
+    scheduler.CPULoad()
+    if stats.CPU.is_temperature_available():
+        scheduler.CPUTemperature()
+    else:
+        logger.warning("Your CPU temperature is not supported yet")
+    if stats.Gpu.is_available():
+        scheduler.GpuStats()
+    scheduler.MemoryStats()
+    scheduler.DiskStats()
+    scheduler.NetStats()
+    scheduler.DateStats()
+    scheduler.QueueHandler()
 
-    # Display custom text with solid background
-    DisplayText(lcd_comm, "Custom italic text", 5, 150,
-                font="roboto/Roboto-Italic.ttf",
-                font_size=30,
-                font_color=(0, 0, 255),
-                background_color=(255, 255, 0))
+    if tray_icon and platform.system() == "Darwin":  # macOS-specific
+        from AppKit import NSBundle, NSApp, NSApplicationActivationPolicyProhibited
 
-    # Display custom text with transparent background
-    DisplayText(lcd_comm, "Transparent bold text", 5, 300,
-                font="geforce/GeForce-Bold.ttf",
-                font_size=30,
-                font_color=(255, 255, 255),
-                background_image="res/example.png")
+        # Hide Python Launcher icon from macOS dock
+        info = NSBundle.mainBundle().infoDictionary()
+        info["LSUIElement"] = "1"
+        NSApp.setActivationPolicy_(NSApplicationActivationPolicyProhibited)
 
-    # Display text that overflows
-    DisplayText(lcd_comm, "Text overflow!", 5, 430,
-                font="roboto/Roboto-Bold.ttf",
-                font_size=60,
-                font_color=(255, 255, 255),
-                background_image="res/example.png")
+        # For macOS: display the tray icon now with blocking function
+        tray_icon.run()
 
-    # Display the current time and some progress bars as fast as possible
-    bar_value = 0
-    while not stop:
-        DisplayText(lcd_comm, str(datetime.now().time()), 160, 2,
-                    font="roboto/Roboto-Bold.ttf",
-                    font_size=20,
-                    font_color=(255, 0, 0),
-                    background_image="res/example.png")
+    elif platform.system() == "Windows":  # Windows-specific
+        # Create a hidden window just to be able to receive window message events (for shutdown/logoff clean stop)
+        hinst = win32api.GetModuleHandle(None)
+        wndclass = win32gui.WNDCLASS()
+        wndclass.hInstance = hinst
+        wndclass.lpszClassName = "turingEventWndClass"
+        messageMap = {win32con.WM_QUERYENDSESSION: on_win32_wm_event,
+                      win32con.WM_ENDSESSION: on_win32_wm_event,
+                      win32con.WM_QUIT: on_win32_wm_event,
+                      win32con.WM_DESTROY: on_win32_wm_event,
+                      win32con.WM_CLOSE: on_win32_wm_event,
+                      win32con.WM_POWERBROADCAST: on_win32_wm_event}
 
-        DisplayProgressBar(lcd_comm, 10, 40,
-                           width=140, height=30,
-                           min_value=0, max_value=100, value=bar_value,
-                           bar_color=(255, 255, 0), bar_outline=True,
-                           background_image="res/example.png")
+        wndclass.lpfnWndProc = messageMap
 
-        DisplayProgressBar(lcd_comm, 160, 40,
-                           width=140, height=30,
-                           min_value=0, max_value=19, value=bar_value % 20,
-                           bar_color=(0, 255, 0), bar_outline=False,
-                           background_image="res/example.png")
+        try:
+            myWindowClass = win32gui.RegisterClass(wndclass)
+            hwnd = win32gui.CreateWindowEx(win32con.WS_EX_LEFT,
+                                           myWindowClass,
+                                           "turingEventWnd",
+                                           0,
+                                           0,
+                                           0,
+                                           win32con.CW_USEDEFAULT,
+                                           win32con.CW_USEDEFAULT,
+                                           0,
+                                           0,
+                                           hinst,
+                                           None)
+            while True:
+                # Receive and dispatch window messages
+                win32gui.PumpWaitingMessages()
+                time.sleep(0.5)
 
-        bar_value = (bar_value + 2) % 101
-
-    lcd_comm.close()
+        except Exception as e:
+            logger.error("Exception while creating event window: %s" % str(e))
