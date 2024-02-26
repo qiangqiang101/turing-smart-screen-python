@@ -77,7 +77,7 @@ class Command(Enum):
     # STATIC IMAGE
     START_DISPLAY_BITMAP = bytearray((0x2c,))
     PRE_UPDATE_BITMAP = bytearray((0x86, 0xef, 0x69, 0x00, 0x00, 0x00, 0x01))
-    UPDATE_BITMAP = bytearray((0xcc, 0xef, 0x69, 0x00, 0x00))
+    UPDATE_BITMAP = bytearray((0xcc, 0xef, 0x69, 0x00))
 
     RESTARTSCREEN = bytearray((0x84, 0xef, 0x69, 0x00, 0x00, 0x00, 0x01))
     DISPLAY_BITMAP = bytearray((0xc8, 0xef, 0x69, 0x00, 0x17, 0x70))
@@ -119,11 +119,8 @@ class SleepInterval(Enum):
 
 
 class SubRevision(Enum):
-    UNKNOWN = bytearray((0x00,))
-    FIVEINCH = bytearray(
-        (0x63, 0x68, 0x73, 0x5f, 0x35, 0x69, 0x6e, 0x63, 0x68, 0x2e, 0x64, 0x65, 0x76, 0x31, 0x5f, 0x72, 0x6f, 0x6d,
-         0x31, 0x2e, 0x38, 0x37, 0x00)
-    )
+    UNKNOWN = ""
+    FIVEINCH = "chs_5inch"
 
     def __init__(self, command):
         self.command = command
@@ -199,9 +196,9 @@ class LcdCommRevC(LcdComm):
         # This command reads LCD answer on serial link, so it bypasses the queue
         self.sub_revision = SubRevision.UNKNOWN
         self._send_command(Command.HELLO, bypass_queue=True)
-        response = self.lcd_serial.read(23)
+        response = str(self.lcd_serial.read(22).decode())
         self.lcd_serial.flushInput()
-        if response == SubRevision.FIVEINCH.value:
+        if response.startswith(SubRevision.FIVEINCH.value):
             self.sub_revision = SubRevision.FIVEINCH
         else:
             logger.warning("Display returned unknown sub-revision on Hello answer (%s)" % str(response))
@@ -352,7 +349,7 @@ class LcdCommRevC(LcdComm):
                 img_raw_data.append(f'{current_pixel[2]:02x}{current_pixel[1]:02x}{current_pixel[0]:02x}')
 
         image_msg = ''.join(img_raw_data)
-        image_size = f'{int((len(image_msg) / 2) + 2):04x}'  # The +2 is for the "ef69" that will be added later.
+        image_size = f'{int((len(image_msg) / 2) + 2):06x}'  # The +2 is for the "ef69" that will be added later.
 
         # logger.debug("Render Count: {}".format(count))
         payload = bytearray()
