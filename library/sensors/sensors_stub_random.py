@@ -43,14 +43,16 @@ class Cpu(sensors.Cpu):
         return random.uniform(30, 90)
 
     @staticmethod
-    def fan_percent() -> float:
+    def fan_percent(fan_name: str = None) -> float:
         return random.uniform(0, 100)
 
 
 class Gpu(sensors.Gpu):
     @staticmethod
-    def stats() -> Tuple[float, float, float, float]:  # load (%) / used mem (%) / used mem (Mb) / temp (°C)
-        return random.uniform(0, 100), random.uniform(0, 100), random.uniform(300, 16000), random.uniform(30, 90)
+    def stats() -> Tuple[
+        float, float, float, float, float]:  # load (%) / used mem (%) / used mem (Mb) / total mem (Mb) / temp (°C)
+        return random.uniform(0, 100), random.uniform(0, 100), random.uniform(300, 16000), 16000.0, random.uniform(30,
+                                                                                                                   90)
 
     @staticmethod
     def fps() -> int:
@@ -59,6 +61,10 @@ class Gpu(sensors.Gpu):
     @staticmethod
     def fan_percent() -> float:
         return random.uniform(0, 100)
+
+    @staticmethod
+    def frequency() -> float:
+        return random.uniform(800, 3400)
 
     @staticmethod
     def is_available() -> bool:
