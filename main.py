@@ -41,6 +41,7 @@ try:
     import signal
     import subprocess
     import time
+    from pathlib import Path
     from PIL import Image
 
     if platform.system() == 'Windows':
@@ -48,21 +49,27 @@ try:
         import win32con
         import win32gui
 
-    try:
-        import pystray
-    except:
-        pass
-except:
-    print(
-        "[ERROR] Python dependencies not installed. Please follow start guide: https://github.com/mathoudebine/turing-smart-screen-python/wiki/System-monitor-:-how-to-start")
+    from library.log import logger
+    import library.scheduler as scheduler
+    from library.display import display
+
+except Exception as e:
+    print("""Import error: %s
+Please follow start guide to install required packages: https://github.com/mathoudebine/turing-smart-screen-python/wiki/System-monitor-:-how-to-start
+Or the troubleshooting page: https://github.com/mathoudebine/turing-smart-screen-python/wiki/Troubleshooting#all-os-tkinter-dependency-not-installed""" % str(
+        e))
     try:
         sys.exit(0)
     except:
         os._exit(0)
 
-from library.log import logger
-import library.scheduler as scheduler
-from library.display import display
+try:
+    import pystray
+except:
+    # If pystray cannot be loaded do not stop the program, just ignore it. The tray icon will not be displayed.
+    pass
+
+MAIN_DIRECTORY = str(Path(__file__).parent.resolve()) + "/"
 
 if __name__ == "__main__":
 
@@ -108,7 +115,7 @@ if __name__ == "__main__":
 
     def on_configure_tray(tray_icon, item):
         logger.info("Configure from tray icon")
-        subprocess.Popen(os.path.join(os.getcwd(), "configure.py"), shell=True)
+        subprocess.Popen(MAIN_DIRECTORY + "configure.py", shell=True)
         clean_stop(tray_icon)
 
 
@@ -155,7 +162,7 @@ if __name__ == "__main__":
         tray_icon = pystray.Icon(
             name='Turing System Monitor',
             title='Turing System Monitor',
-            icon=Image.open("res/icons/monitor-icon-17865/64.png"),
+            icon=Image.open(MAIN_DIRECTORY + "res/icons/monitor-icon-17865/64.png"),
             menu=pystray.Menu(
                 pystray.MenuItem(
                     text='Configure',
@@ -210,6 +217,8 @@ if __name__ == "__main__":
     scheduler.DateStats()
     scheduler.SystemUptimeStats()
     scheduler.CustomStats()
+    scheduler.WeatherStats()
+    scheduler.PingStats()
     scheduler.QueueHandler()
 
     if tray_icon and platform.system() == "Darwin":  # macOS-specific

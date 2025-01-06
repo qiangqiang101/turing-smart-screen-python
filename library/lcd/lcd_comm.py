@@ -211,7 +211,7 @@ class LcdComm(ABC):
             y: int = 0,
             width: int = 0,
             height: int = 0,
-            font: str = "roboto-mono/RobotoMono-Regular.ttf",
+            font: str = "./res/fonts/roboto-mono/RobotoMono-Regular.ttf",
             font_size: int = 20,
             font_color: Tuple[int, int, int] = (0, 0, 0),
             background_color: Tuple[int, int, int] = (255, 255, 255),
@@ -235,6 +235,10 @@ class LcdComm(ABC):
         assert len(text) > 0, 'Text must not be empty'
         assert font_size > 0, "Font size must be > 0"
 
+        # If only width is specified, assume height based on font size (one-line text)
+        if width > 0 and height == 0:
+            height = font_size
+
         if background_image is None:
             # A text bitmap is created with max width/height by default : text with solid background
             text_image = Image.new(
@@ -248,7 +252,7 @@ class LcdComm(ABC):
 
         # Get text bounding box
         if (font, font_size) not in self.font_cache:
-            self.font_cache[(font, font_size)] = ImageFont.truetype("./res/fonts/" + font, font_size)
+            self.font_cache[(font, font_size)] = ImageFont.truetype(font, font_size)
         font = self.font_cache[(font, font_size)]
         d = ImageDraw.Draw(text_image)
 
@@ -350,6 +354,8 @@ class LcdComm(ABC):
                          line_width: int = 2,
                          graph_axis: bool = True,
                          axis_color: Tuple[int, int, int] = (0, 0, 0),
+                         axis_font: str = "./res/fonts/roboto/Roboto-Black.ttf",
+                         axis_font_size: int = 10,
                          background_color: Tuple[int, int, int] = (255, 255, 255),
                          background_image: str = None):
         # Generate a plot graph and display it
@@ -428,18 +434,41 @@ class LcdComm(ABC):
             # Draw Legend
             draw.line([0, 0, 1, 0], fill=axis_color)
             text = f"{int(max_value)}"
-            font = ImageFont.truetype("./res/fonts/" + "roboto/Roboto-Black.ttf", 10)
-            left, top, right, bottom = font.getbbox(text)
+            ttfont = ImageFont.truetype(axis_font, axis_font_size)
+            left, top, right, bottom = ttfont.getbbox(text)
             draw.text((2, 0 - top), text,
-                      font=font, fill=axis_color)
+                      font=ttfont, fill=axis_color)
 
             text = f"{int(min_value)}"
-            font = ImageFont.truetype("./res/fonts/" + "roboto/Roboto-Black.ttf", 10)
-            left, top, right, bottom = font.getbbox(text)
+            ttfont = ImageFont.truetype(axis_font, axis_font_size)
+            left, top, right, bottom = ttfont.getbbox(text)
             draw.text((width - 1 - right, height - 2 - bottom), text,
-                      font=font, fill=axis_color)
+                      font=ttfont, fill=axis_color)
 
         self.DisplayPILImage(graph_image, x, y)
+
+    def DrawRadialDecoration(self, draw: ImageDraw, angle: float, radius: float, width: float, color: Tuple[int, int, int] = (0, 0, 0)):
+        i_cos = math.cos(angle*math.pi/180)
+        i_sin = math.sin(angle*math.pi/180)
+        x_f = (i_cos * (radius - width/2)) + radius
+        if math.modf(x_f) == 0.5:
+            if i_cos > 0:
+                x_f = math.floor(x_f)
+            else:
+                x_f = math.ceil(x_f)
+        else:
+             x_f = math.floor(x_f + 0.5) 
+            
+        y_f = (i_sin * (radius - width/2)) + radius 
+        if math.modf(y_f) == 0.5:
+            if i_sin > 0:
+                y_f = math.floor(y_f)
+            else:
+                y_f = math.ceil(y_f)
+        else:
+            y_f = math.floor(y_f + 0.5)            
+        draw.ellipse([x_f - width/2, y_f - width/2, x_f + width/2, y_f - 1 + width/2 - 1], outline=color, fill=color, width=1)   
+      
 
     def DisplayRadialProgressBar(self, xc: int, yc: int, radius: int, bar_width: int,
                                  min_value: int = 0,
@@ -452,12 +481,17 @@ class LcdComm(ABC):
                                  value: int = 50,
                                  text: str = None,
                                  with_text: bool = True,
-                                 font: str = "roboto/Roboto-Black.ttf",
+                                 font: str = "./res/fonts/roboto/Roboto-Black.ttf",
                                  font_size: int = 20,
                                  font_color: Tuple[int, int, int] = (0, 0, 0),
                                  bar_color: Tuple[int, int, int] = (0, 0, 0),
                                  background_color: Tuple[int, int, int] = (255, 255, 255),
-                                 background_image: str = None):
+                                 background_image: str = None,
+                                 custom_bbox: Tuple[int, int, int, int] = (0, 0, 0, 0),
+                                 text_offset: Tuple[int, int] = (0,0),
+                                 bar_background_color: Tuple[int, int, int] = (0, 0, 0),
+                                 draw_bar_background: bool = False,
+                                 bar_decoration: str = ""):                                 
         # Generate a radial progress bar and display it
         # Provide the background image path to display progress bar with transparent background
 
@@ -469,6 +503,9 @@ class LcdComm(ABC):
 
         if isinstance(font_color, str):
             font_color = tuple(map(int, font_color.split(', ')))
+
+        if isinstance(bar_background_color, str):
+            bar_background_color = tuple(map(int, bar_background_color.split(', ')))
 
         if angle_start % 361 == angle_end % 361:
             if clockwise:
@@ -521,6 +558,23 @@ class LcdComm(ABC):
                 ecart = 360 - angle_start + angle_end
             else:
                 ecart = angle_end - angle_start
+
+            # draw bar background
+            if draw_bar_background:
+                if angle_end < angle_start:
+                    angleE = angle_start + ecart
+                    angleS = angle_start
+                else:
+                    angleS = angle_start
+                    angleE = angle_start + ecart
+                draw.arc([0, 0, diameter - 1, diameter - 1], angleS, angleE, fill=bar_background_color, width=bar_width) 
+                
+            # draw bar decoration
+            if bar_decoration == "Ellipse":
+                self.DrawRadialDecoration(draw = draw, angle = angle_end, radius = radius, width = bar_width, color = bar_background_color)
+                self.DrawRadialDecoration(draw = draw, angle = angle_start, radius = radius, width = bar_width, color = bar_color)
+                self.DrawRadialDecoration(draw = draw, angle = angle_start + pct * ecart, radius = radius, width = bar_width, color = bar_color)
+
             #
             # solid bar case
             if angle_sep == 0:
@@ -554,6 +608,25 @@ class LcdComm(ABC):
                 ecart = angle_start - angle_end
             else:
                 ecart = 360 - angle_end + angle_start
+
+            # draw bar background
+            if draw_bar_background:
+                if angle_end < angle_start:
+                    angleE = angle_start
+                    angleS = angle_start - ecart
+                else:
+                    angleS = angle_start - ecart
+                    angleE = angle_start
+                draw.arc([0, 0, diameter - 1, diameter - 1], angleS, angleE, fill=bar_background_color, width=bar_width) 
+
+
+            # draw bar decoration
+            if bar_decoration == "Ellipse":
+                self.DrawRadialDecoration(draw = draw, angle = angle_end, radius = radius, width = bar_width, color = bar_background_color)
+                self.DrawRadialDecoration(draw = draw, angle = angle_start, radius = radius, width = bar_width, color = bar_color)
+                self.DrawRadialDecoration(draw = draw, angle = angle_start - pct * ecart, radius = radius, width = bar_width, color = bar_color)
+
+            #      
             # solid bar case
             if angle_sep == 0:
                 if angle_end < angle_start:
@@ -586,13 +659,17 @@ class LcdComm(ABC):
         if with_text:
             if text is None:
                 text = f"{int(pct * 100 + .5)}%"
-            font = ImageFont.truetype("./res/fonts/" + font, font_size)
+            font = ImageFont.truetype(font, font_size)
             left, top, right, bottom = font.getbbox(text)
             w, h = right - left, bottom - top
-            draw.text((radius - w / 2, radius - top - h / 2), text,
+            draw.text((radius - w / 2 + text_offset[0], radius - top - h / 2 + text_offset[1]), text,
                       font=font, fill=font_color)
 
-        self.DisplayPILImage(bar_image, xc - radius, yc - radius)
+        if custom_bbox[0] != 0 or custom_bbox[1] != 0 or custom_bbox[2] != 0 or custom_bbox[3] != 0:
+            bar_image = bar_image.crop(box=custom_bbox)
+
+        self.DisplayPILImage(bar_image, xc - radius + custom_bbox[0], yc - radius + custom_bbox[1])
+       # self.DisplayPILImage(bar_image, xc - radius, yc - radius)
 
     # Load image from the filesystem, or get from the cache if it has already been loaded previously
     def open_image(self, bitmap_path: str) -> Image:
