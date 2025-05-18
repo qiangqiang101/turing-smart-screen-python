@@ -19,6 +19,7 @@
 import copy
 import math
 import os
+import platform
 import queue
 import sys
 import threading
@@ -139,6 +140,10 @@ class LcdComm(ABC):
     def WriteLine(self, line: bytes):
         try:
             self.serial_write(line)
+            if platform.system() == "Darwin":
+                # macOS needs the serial buffer to be flushed regularly to avoid bitmap corruption on the display
+                # See https://github.com/mathoudebine/turing-smart-screen-python/issues/7
+                self.lcd_serial.flush()
         except serial.SerialTimeoutException:
             # We timed-out trying to write to our device, slow things down.
             logger.warning("(Write line) Too fast! Slow down!")
@@ -506,9 +511,9 @@ class LcdComm(ABC):
             else:
                 angle_end += 0.1
 
-        assert xc - radius >= 0 and xc + radius <= self.get_width(), 'Progress bar width exceeds display width'
-        assert yc - radius >= 0 and yc + radius <= self.get_height(), 'Progress bar height exceeds display height'
-        assert 0 < bar_width <= radius, f'Progress bar linewidth is {bar_width}, must be > 0 and <= radius'
+        assert xc - radius >= 0 and xc + radius <= self.get_width(), 'Radial is out of screen (left/right)'
+        assert yc - radius >= 0 and yc + radius <= self.get_height(), 'Radial is out of screen (up/down)'
+        assert 0 < bar_width <= radius, f'Radial linewidth is {bar_width}, must be > 0 and <= radius'
         assert angle_end % 361 != angle_start % 361, f'Invalid angles values, start = {angle_start}, end = {angle_end}'
         assert isinstance(angle_steps, int), 'angle_steps value must be an integer'
         assert angle_sep >= 0, 'Provide an angle_sep value >= 0'
@@ -521,7 +526,7 @@ class LcdComm(ABC):
         elif max_value < value:
             value = max_value
 
-        assert min_value <= value <= max_value, 'Progress bar value shall be between min and max'
+        assert min_value <= value <= max_value, 'Radial value shall be between min and max'
 
         diameter = 2 * radius
         bbox = (xc - radius, yc - radius, xc + radius, yc + radius)

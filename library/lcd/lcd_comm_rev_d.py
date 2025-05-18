@@ -52,14 +52,12 @@ class LcdCommRevD(LcdComm):
     @staticmethod
     def auto_detect_com_port() -> Optional[str]:
         com_ports = comports()
-        auto_com_port = None
 
         for com_port in com_ports:
             if com_port.vid == 0x454d and com_port.pid == 0x4e41:
-                auto_com_port = com_port.device
-                break
+                return com_port.device
 
-        return auto_com_port
+        return None
 
     def WriteData(self, byteBuffer: bytearray):
         LcdComm.WriteData(self, byteBuffer)
@@ -91,7 +89,7 @@ class LcdCommRevD(LcdComm):
     def Clear(self):
         # HW revision D does not implement a Clear command: display a blank image on the whole screen
         color = 0xFFFF  # RGB565 White color
-        color_bytes = bytearray(color.to_bytes(2))
+        color_bytes = bytearray(color.to_bytes(2, "big"))
         self.SendCommand(cmd=Command.DISPCOLOR, payload=color_bytes)
 
     def ScreenOff(self):
